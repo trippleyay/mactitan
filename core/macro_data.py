@@ -36,7 +36,15 @@ def fetch_series(series_id: str, observation_start: str = "2026-01-01") -> list[
     """
     Fetch observations for a FRED series.
 
-    Returns a list of {"date": "YYYY-MM-DD", "value": float}, chronological.
+    Returns a list of {"reference_date": "YYYY-MM-DD", "release_date": "YYYY-MM-DD",
+    "value": float}, chronological by reference_date.
+
+    reference_date is the period the data describes (e.g. "2026-08-01" for
+    August CPI) — NOT when it was published. release_date (FRED's
+    realtime_start) is the actual day the value became public, which is
+    what event-reaction analysis needs to measure against — using
+    reference_date instead would compare stock prices to the wrong day
+    entirely, off by however long the publication lag is for that series.
     """
     params = {
         "series_id": series_id,
@@ -53,7 +61,11 @@ def fetch_series(series_id: str, observation_start: str = "2026-01-01") -> list[
     for obs in body.get("observations", []):
         if obs["value"] == ".":  # FRED's marker for missing data
             continue
-        observations.append({"date": obs["date"], "value": float(obs["value"])})
+        observations.append({
+            "reference_date": obs["date"],
+            "release_date": obs["realtime_start"],
+            "value": float(obs["value"]),
+        })
     return observations
 
 
@@ -104,13 +116,14 @@ def derive_rate_changes(fed_funds_events: list[dict]) -> list[dict]:
     """
     Given chronological Fed Funds observations, return only the points where
     the rate actually changed, labeled hike/cut, plus the magnitude.
+    Uses release_date (real publication day), not reference_date.
     """
     changes = []
     for prev, curr in zip(fed_funds_events, fed_funds_events[1:]):
         delta = curr["value"] - prev["value"]
         if abs(delta) > 1e-6:
             changes.append({
-                "date": curr["date"],
+                "release_date": curr["release_date"],
                 "direction": "hike" if delta > 0 else "cut",
                 "magnitude": round(abs(delta), 3),
                 "new_rate": curr["value"],
