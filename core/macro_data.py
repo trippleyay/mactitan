@@ -40,11 +40,21 @@ def fetch_series(series_id: str, observation_start: str = "2026-01-01") -> list[
     "value": float}, chronological by reference_date.
 
     reference_date is the period the data describes (e.g. "2026-08-01" for
-    August CPI) — NOT when it was published. release_date (FRED's
-    realtime_start) is the actual day the value became public, which is
-    what event-reaction analysis needs to measure against — using
-    reference_date instead would compare stock prices to the wrong day
-    entirely, off by however long the publication lag is for that series.
+    August CPI).
+
+    release_date (FRED's realtime_start) is NOT reliable as "the original
+    publication date" — CONFIRMED BY LIVE TESTING: for series subject to
+    periodic bulk revisions (CPI gets seasonal-adjustment revisions), a
+    revision event overwrites realtime_start for MANY historical points at
+    once to the revision date, not each observation's real original release
+    day. In testing, three different reference months all returned the
+    same release_date, which is wrong.
+
+    DO NOT use release_date from this function for event-reaction dating.
+    Use data/macro_calendar.py's real, manually-sourced dates
+    (CPI_2026_DATES_CONFIRMED, FOMC_2026_DATES) instead — this function
+    should only be used to fetch VALUES, matched to those real dates by
+    reference month.
     """
     params = {
         "series_id": series_id,
@@ -63,7 +73,7 @@ def fetch_series(series_id: str, observation_start: str = "2026-01-01") -> list[
             continue
         observations.append({
             "reference_date": obs["date"],
-            "release_date": obs["realtime_start"],
+            "release_date": obs["realtime_start"],  # UNRELIABLE — see docstring above
             "value": float(obs["value"]),
         })
     return observations
@@ -112,11 +122,71 @@ def get_macro_events(indicator: str, observation_start: str = "2026-01-01") -> l
     return fetch_series(MACRO_SERIES[indicator], observation_start)
 
 
+def get_upcoming_release_dates(release_id: int, limit: int = 5) -> list[str]:
+    """
+    Attempt to fetch upcoming release dates for a given FRED release_id via
+    the /fred/release/dates endpoint.
+
+    IMPORTANT CAVEAT: FRED's release-dates endpoint is documented as a
+    historical record of when data was actually published — it is NOT
+    confirmed to reliably list forward-looking scheduled dates. This
+    function queries it and returns whatever comes back after today, but
+    callers should not assume a non-empty result is guaranteed.
+
+    For the two events this product cares about most (FOMC decisions, CPI
+    releases), both the Federal Reserve and BLS separately publish their
+    own official forward calendars well in advance — those are the
+    authoritative source for "when is the next one," not this endpoint.
+    This function is a best-effort attempt via FRED only; if it returns
+    nothing, fall back to checking those official calendars directly
+    rather than treating an empty result as "no upcoming event."
+    """
+    from datetime import date
+    today = date.today().isoformat()
+
+    params = {
+        "release_id": release_id,
+        "api_key": _api_key(),
+        "file_type": "json",
+        "realtime_start": today,
+        "sort_order": "asc",
+        "limit": limit,
+    }
+    resp = requests.get(f"{BASE_URL}/release/dates", params=params, timeout=10)
+    resp.raise_for_status()
+    body = resp.json()
+
+    dates = [d["date"] for d in body.get("release_dates", []) if d["date"] >= today]
+    return dates
+
+
+# Known FRED release_id values for the events this product cares about most,
+# so callers don't need to look these up separately.
+# FOMC (101) was directly confirmed via FRED's release listing. CPI (10) is
+# a plausible but UNVERIFIED guess — confirm both against
+# https://api.stlouisfed.org/fred/releases before relying on this in
+# production; an easy check: fetch_series or get_upcoming_release_dates
+# with a wrong id will just return empty/error, not a silently wrong date.
+RELEASE_IDS = {
+    "fomc": 101,   # FOMC Press Release — confirmed
+    "cpi": 10,     # Consumer Price Index — UNVERIFIED, double-check
+}
+
+
 def derive_rate_changes(fed_funds_events: list[dict]) -> list[dict]:
     """
-    Given chronological Fed Funds observations, return only the points where
-    the rate actually changed, labeled hike/cut, plus the magnitude.
-    Uses release_date (real publication day), not reference_date.
+    DEPRECATED — DO NOT USE FOR DETECTING FOMC DECISIONS.
+
+    CONFIRMED BY LIVE TESTING: FEDFUNDS is the EFFECTIVE (market-traded)
+    federal funds rate, which drifts by small amounts every month even with
+    no policy change at all. Testing this against real data flagged a
+    0.01-point move as a "cut" — real FOMC decisions move in 0.25
+    increments; this was noise, not a policy signal.
+
+    Use data/macro_calendar.py's FOMC_2026_DATES directly as the real
+    decision dates instead — those are the Fed's own officially published
+    meeting dates, not inferred from rate drift. This function is kept only
+    for reference and is not called anywhere in the product.
     """
     changes = []
     for prev, curr in zip(fed_funds_events, fed_funds_events[1:]):

@@ -111,3 +111,52 @@ def compute_portfolio_beta(holdings: list[dict], prices: dict[str, float], betas
     if total_value == 0:
         return 0.0
     return weighted_beta / total_value
+
+
+def compute_recent_volatility(closes: list[float], recent_window: int = 10) -> dict:
+    """
+    Compare a ticker's recent realized volatility to its own longer-run
+    baseline — answers "is this elevated right now" using the ticker's own
+    history, not an arbitrary external threshold.
+
+    closes: full available closing price series (oldest first)
+    recent_window: how many most-recent days count as "recent" (default 10)
+
+    Returns:
+        {"recent_volatility": float, "baseline_volatility": float,
+         "ratio": float, "elevated": bool}
+    "elevated" is True when recent volatility is at least 1.5x baseline —
+    a simple, explainable threshold rather than a statistical test, since
+    this is meant to answer a plain-language question, not run inference.
+    """
+    returns = to_returns(closes)
+
+    if len(returns) < recent_window + 5:
+        # Not enough history to compare meaningfully — return None fields
+        # rather than a misleading number computed from a tiny sample.
+        return {
+            "recent_volatility": None,
+            "baseline_volatility": None,
+            "ratio": None,
+            "elevated": None,
+        }
+
+    recent_returns = returns[-recent_window:]
+    baseline_returns = returns[:-recent_window]  # everything before the recent window
+
+    recent_vol = float(np.std(recent_returns))
+    baseline_vol = float(np.std(baseline_returns))
+
+    if baseline_vol == 0:
+        ratio = None
+        elevated = None
+    else:
+        ratio = recent_vol / baseline_vol
+        elevated = ratio >= 1.5
+
+    return {
+        "recent_volatility": round(recent_vol, 5),
+        "baseline_volatility": round(baseline_vol, 5),
+        "ratio": round(ratio, 3) if ratio is not None else None,
+        "elevated": elevated,
+    }
