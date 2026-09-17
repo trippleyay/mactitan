@@ -38,9 +38,16 @@ def rank_sector_sensitivity(
     sector_vols: dict[str, list[float]] = {}
 
     for ticker in universe:
-        reactions = compute_event_reactions(
-            ticker, event_dates, fetch_price_history_fn, days_before, days_after
-        )
+        try:
+            reactions = compute_event_reactions(
+                ticker, event_dates, fetch_price_history_fn, days_before, days_after
+            )
+        except Exception:
+            # A single bad/delisted/unlisted ticker (e.g. a real 400 from
+            # Bitget for a symbol that doesn't actually exist) must not take
+            # down the whole universe scan — skip it and keep going.
+            continue
+
         if not reactions:
             continue  # ticker had no usable price history for these events — skip
 
