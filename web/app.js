@@ -116,7 +116,7 @@ function showThinking() {
   msg.className = "msg msg-assistant";
   msg.id = "thinkingMsg";
   const bubble = document.createElement("div");
-  bubble.className = "msg-bubble orb-thinking";
+  bubble.className = "orb-thinking";
   bubble.innerHTML = `<span class="orb">${buildOrbCellsHtml()}</span><span class="orb-thinking-text">Crunching the numbers…</span>`;
   msg.appendChild(bubble);
   chatThread.appendChild(msg);
