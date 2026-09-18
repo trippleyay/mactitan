@@ -49,6 +49,7 @@ class ChatResponse(BaseModel):
     answer: str
     history: list[dict]
     tools_used: list[str]
+    tool_results: list[dict]
 
 
 @app.get("/health")
@@ -72,6 +73,7 @@ def chat(request: ChatRequest):
         answer=result["answer"],
         history=result["history"],
         tools_used=[t["tool"] for t in result["tool_calls_made"]],
+        tool_results=result["tool_calls_made"],
     )
 
 
