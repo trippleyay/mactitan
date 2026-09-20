@@ -584,7 +584,17 @@ html, body {
     color: var(--accent);
   }
 
+  /* Chat-only on mobile: the workspace panel and its toggle are disabled. */
+  .workspace-panel,
+  .mobile-toggle {
+    display: none !important;
+  }
+
+  .app.view-workspace .chat-panel {
+    display: flex !important;
+  }
+
   .chat-input-row {
-    padding-bottom: 70px;
+    padding-bottom: 20px; /* no fixed toggle bar to clear anymore */
   }
 }
