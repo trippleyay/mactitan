@@ -3,88 +3,146 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>MacTitan — Macro-Quant Research Desk</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<title>MacTitan</title>
+<meta name="description" content="Real event reactions, sector sensitivity, and volatility data for Bitget rTokens. Ask a question, get the numbers.">
 <link rel="icon" type="image/png" href="favicon.png">
 <link rel="icon" type="image/x-icon" href="favicon.ico">
-<link rel="stylesheet" href="style.css">
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/marked@12.0.0/lib/marked.umd.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="landing.css">
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.165.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.165.0/examples/jsm/"
+  }
+}
+</script>
 </head>
 <body>
 
-<div class="app">
+<nav class="nav">
+  <div class="nav-brand">
+    <img src="logo-white.svg" alt="MacTitan" class="nav-logo">
+    <span class="nav-name">MacTitan</span>
+  </div>
+  <div class="nav-links">
+    <a href="about.html" class="nav-link">About</a>
+  </div>
+</nav>
 
-  <!-- LEFT: chat thread -->
-  <div class="chat-panel">
-    <div class="chat-header">
-      <div class="brand">
-        <div class="brand-mark"><img src="logo.svg" alt="MacTitan"></div>
-        <span class="brand-name">MacTitan</span>
-      </div>
-    </div>
-
-    <div class="chat-thread" id="chatThread">
-      <div class="msg msg-assistant">
-        <div class="msg-bubble">
-          Welcome. I'm MacTitan — your macro-quant research desk for Bitget rToken trading.
-          <br><br>
-          Ask me about how a stock has reacted to real macro events, which sectors are most sensitive to CPI or FOMC moves, whether a ticker's volatility is elevated, or what's driving the latest inflation print.
-        </div>
-      </div>
-    </div>
-
-    <div class="chat-input-row">
-      <div class="chat-input-wrap">
-        <input type="text" id="chatInput" class="chat-input" placeholder="Ask about a ticker, sector, or event…" autocomplete="off" />
-        <button id="sendBtn" class="send-btn" aria-label="Send">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
-            <path d="M12 19V5M12 5L6 11M12 5L18 11" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
-          </svg>
-        </button>
-      </div>
-    </div>
+<section class="hero">
+  <div class="hero-canvas-wrap" id="heroCanvasWrap">
+    <canvas id="heroCanvas"></canvas>
   </div>
 
-  <!-- RIGHT: live workspace panel -->
-  <div class="workspace-panel">
-    <div class="workspace-header">
-      <span class="workspace-label">Workspace</span>
-    </div>
-    <div class="workspace-body" id="workspaceBody">
-      <div class="workspace-empty">
-        <svg class="workspace-empty-icon" viewBox="0 0 24 24" fill="none">
-          <rect x="0.15" y="0.15" width="23.7" height="23.7" rx="1.5" stroke="currentColor" stroke-width="0.3"/>
-          <line x1="3" y1="0.15" x2="3" y2="23.85" stroke="currentColor" stroke-width="0.3"/>
-          <line x1="6" y1="0.15" x2="6" y2="23.85" stroke="currentColor" stroke-width="0.3"/>
-          <line x1="9" y1="0.15" x2="9" y2="23.85" stroke="currentColor" stroke-width="0.3"/>
-          <line x1="12" y1="0.15" x2="12" y2="23.85" stroke="currentColor" stroke-width="0.3"/>
-          <line x1="15" y1="0.15" x2="15" y2="23.85" stroke="currentColor" stroke-width="0.3"/>
-          <line x1="18" y1="0.15" x2="18" y2="23.85" stroke="currentColor" stroke-width="0.3"/>
-          <line x1="21" y1="0.15" x2="21" y2="23.85" stroke="currentColor" stroke-width="0.3"/>
-          <line x1="0.15" y1="3" x2="23.85" y2="3" stroke="currentColor" stroke-width="0.3"/>
-          <line x1="0.15" y1="6" x2="23.85" y2="6" stroke="currentColor" stroke-width="0.3"/>
-          <line x1="0.15" y1="9" x2="23.85" y2="9" stroke="currentColor" stroke-width="0.3"/>
-          <line x1="0.15" y1="12" x2="23.85" y2="12" stroke="currentColor" stroke-width="0.3"/>
-          <line x1="0.15" y1="15" x2="23.85" y2="15" stroke="currentColor" stroke-width="0.3"/>
-          <line x1="0.15" y1="18" x2="23.85" y2="18" stroke="currentColor" stroke-width="0.3"/>
-          <line x1="0.15" y1="21" x2="23.85" y2="21" stroke="currentColor" stroke-width="0.3"/>
+  <div class="hero-content">
+    <p class="hero-eyebrow">‣ MacTitan ‣</p>
+    <h1 class="hero-title">I am MacTitan</h1>
+    <p class="hero-sub">Macroeconomic events directly impact specific stocks and entire sectors. <strong>Ask me your questions, and I'll crunch the real numbers for you.</strong></p>
+  </div>
+
+  <div class="hero-ctas-side">
+    <a href="chat.html" class="btn btn-primary">‣ Open Web Chat</a>
+    <a href="https://t.me/mactitan_bot" class="btn btn-secondary" target="_blank" rel="noopener">‣ Message on Telegram</a>
+  </div>
+</section>
+
+<section class="about">
+  <h2 class="section-title">What I actually do</h2>
+  <div class="about-text">
+    <p>I analyze how macroeconomic events historically impact specific tickers and sectors by mapping Bitget rToken price data directly against historical macro releases from the Fed and the BLS. I compute actual asset reactions to past macro data so you can see exactly how a specific ticker or an entire sector behaves during these events. You can ask me to evaluate a single asset, analyze a broader sector, or check the upcoming calendar, and I will deliver the calculated historical facts plainly, including when the data is mixed or history is limited.</p>
+  </div>
+</section>
+
+<section class="features">
+  <h2 class="section-title">My Core Capabilities</h2>
+  <div class="feature-grid">
+    <div class="feature-card">
+      <span class="feature-tag">EVENT REACTIONS</span>
+      <div class="card-visual">
+        <svg viewBox="0 0 160 70" class="card-chart">
+          <rect x="10" y="30" width="24" height="30" fill="var(--negative)" opacity="0.8"/>
+          <rect x="68" y="12" width="24" height="48" fill="var(--positive)" opacity="0.8"/>
+          <rect x="126" y="38" width="24" height="22" fill="var(--negative)" opacity="0.8"/>
+          <line x1="0" y1="60" x2="160" y2="60" stroke="var(--border-medium)" stroke-width="1"/>
         </svg>
-        <p>Data visualizer</p>
       </div>
+      <h3>How your ticker actually reacted</h3>
+      <p>Map historical price and volatility shifts directly around key macroeconomic events.</p>
+    </div>
+    <div class="feature-card">
+      <span class="feature-tag">SECTOR SENSITIVITY</span>
+      <div class="card-visual">
+        <svg viewBox="0 0 160 70" class="card-chart">
+          <rect x="0" y="10" width="140" height="10" rx="2" fill="var(--accent)" opacity="0.9"/>
+          <rect x="0" y="30" width="95" height="10" rx="2" fill="var(--accent)" opacity="0.6"/>
+          <rect x="0" y="50" width="60" height="10" rx="2" fill="var(--accent)" opacity="0.35"/>
+        </svg>
+      </div>
+      <h3>Which sectors move hardest</h3>
+      <p>Rank real historical reactions to each macro event across the full rToken universe.</p>
+    </div>
+    <div class="feature-card">
+      <span class="feature-tag">VOLATILITY</span>
+      <div class="card-visual">
+        <svg viewBox="0 0 160 70" class="card-chart">
+          <path d="M15 60 A55 55 0 0 1 145 60" fill="none" stroke="var(--border-medium)" stroke-width="8" stroke-linecap="round"/>
+          <path d="M15 60 A55 55 0 0 1 105 15" fill="none" stroke="var(--accent)" stroke-width="8" stroke-linecap="round"/>
+          <circle cx="105" cy="15" r="5" fill="var(--accent-bright)"/>
+        </svg>
+      </div>
+      <h3>Current volatility tracking</h3>
+      <p>Calculate and compare current asset volatility against its own historical baseline live</p>
+    </div>
+    <div class="feature-card">
+      <span class="feature-tag">LIVE CALENDAR</span>
+      <div class="card-visual">
+        <svg viewBox="0 0 160 70" class="card-chart">
+          <rect x="10" y="5" width="140" height="60" rx="4" fill="none" stroke="var(--border-medium)" stroke-width="1.5"/>
+          <line x1="10" y1="24" x2="150" y2="24" stroke="var(--border-medium)" stroke-width="1.5"/>
+          <circle cx="35" cy="40" r="3" fill="var(--text-faint)"/>
+          <circle cx="60" cy="40" r="3" fill="var(--text-faint)"/>
+          <circle cx="85" cy="40" r="3" fill="var(--accent)"/>
+          <circle cx="110" cy="40" r="3" fill="var(--text-faint)"/>
+          <circle cx="35" cy="52" r="3" fill="var(--text-faint)"/>
+          <circle cx="60" cy="52" r="3" fill="var(--text-faint)"/>
+        </svg>
+      </div>
+      <h3>Upcoming macroeconomic schedule</h3>
+      <p>Track upcoming global macroeconomic schedules to pinpoint the next data release or policy decision.</p>
     </div>
   </div>
+</section>
 
-  <!-- Mobile toggle between chat and workspace -->
-  <div class="mobile-toggle" id="mobileToggle">
-    <button class="mobile-toggle-btn active" data-view="chat">Chat</button>
-    <button class="mobile-toggle-btn" data-view="workspace">Workspace</button>
+<section class="cta-block">
+  <h2>Ask me how macro events impact your tickers or sectors</h2>
+  <div class="hero-ctas">
+    <a href="chat.html" class="btn btn-primary-inverse">‣ Ask on web</a>
+    <a href="https://t.me/mactitan_bot" class="btn btn-primary-inverse" target="_blank" rel="noopener">‣ Ask on Telegram</a>
   </div>
+</section>
 
-</div>
+<footer class="footer">
+  <div class="footer-inner">
+    <div class="footer-col footer-brand-col">
+      <div class="footer-brand">
+        <img src="logo-white.svg" alt="MacTitan" class="footer-logo">
+        <span>MacTitan</span>
+      </div>
+      <p class="footer-note">High-performance macro-quant research for Stock traders. Real data, computed live.</p>
+    </div>
+    <div class="footer-col">
+      <span class="footer-col-title">Data sources</span>
+      <a href="https://www.bitget.com/asia/academy/bitget-rtoken-faq" class="footer-link" target="_blank" rel="noopener">Bitget rToken market data</a>
+      <a href="https://fred.stlouisfed.org/docs/api/fred/" class="footer-link" target="_blank" rel="noopener">FRED macro data series</a>
+      <a href="https://www.bls.gov/developers/home.htm" class="footer-link" target="_blank" rel="noopener">BLS macro data series</a>
+    </div>
+  </div>
+  <div class="footer-status">‣ Live on Bitget. Base Camp Hackathon S2 ‣</div>
+</footer>
 
-<script src="app.js"></script>
+<script type="module" src="hero3d.js"></script>
 </body>
 </html>
