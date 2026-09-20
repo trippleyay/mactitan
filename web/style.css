@@ -542,6 +542,10 @@ html, body {
 @media (max-width: 860px) {
   .app {
     flex-direction: column;
+    /* dvh follows the real visible viewport on phones — 100vh extends
+       behind the browser's bottom bar, which pushed the input row
+       underneath it. */
+    height: 100dvh;
   }
 
   .chat-panel, .workspace-panel {
@@ -595,6 +599,6 @@ html, body {
   }
 
   .chat-input-row {
-    padding-bottom: 20px; /* no fixed toggle bar to clear anymore */
+    padding-bottom: calc(20px + env(safe-area-inset-bottom)); /* clears phone home-indicator area */
   }
 }

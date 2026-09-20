@@ -213,9 +213,8 @@ a { text-decoration: none; color: inherit; }
   pointer-events: auto;
 }
 
-/* Mobile / slim screens: reflow the hero into a clean vertical stack —
-   text, then the head (nothing overlaps the face), then the buttons.
-   Desktop (>900px) keeps the absolute-canvas layout untouched. */
+/* Mobile / slim screens: reflow the hero into a vertical stack —
+   text first, head tucked up behind the last text line, buttons last. */
 @media (max-width: 900px) {
   .hero {
     min-height: 0;
@@ -234,10 +233,11 @@ a { text-decoration: none; color: inherit; }
     transform: none;
     width: min(82vw, 400px);
     height: min(82vw, 400px);
-    /* On phones the whole canvas is visible, so dissolve the neck into
-       darkness before its cut-off end can appear. */
-    -webkit-mask-image: linear-gradient(to bottom, black 0%, black 74%, transparent 93%);
-    mask-image: linear-gradient(to bottom, black 0%, black 74%, transparent 93%);
+    margin-top: -100px; /* pull the head up so the text just overlaps its crown */
+    /* The model's neck-cut ends ~92% down the canvas; dissolve the neck
+       into darkness BEFORE that point so the cut edge never appears. */
+    -webkit-mask-image: linear-gradient(to bottom, black 0%, black 66%, transparent 89%);
+    mask-image: linear-gradient(to bottom, black 0%, black 66%, transparent 89%);
   }
 
   .hero-ctas-side {
