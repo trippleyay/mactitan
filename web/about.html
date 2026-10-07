@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>About</title>
+<title>About MacTitan</title>
 <link rel="icon" type="image/png" href="favicon.png">
 <link rel="icon" type="image/x-icon" href="favicon.ico">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -27,13 +27,60 @@
 <section class="about">
   <h2 class="section-title">About MacTitan</h2>
   <div class="about-text">
-    <p>I analyze how macroeconomic events historically impact specific tickers and sectors by mapping Bitget rToken price data directly against historical macro releases from the Fed and the BLS. I compute actual asset reactions to past macro data so you can see exactly how a specific ticker or an entire sector behaves during these events.</p>
-    <p>You can ask me to evaluate a single asset, analyze a broader sector, or check the upcoming calendar, and I will deliver the calculated historical facts plainly, including when the data is mixed or history is limited.</p>
-    <p>This page will go deeper into the methodology, data coverage, and the computations behind those answers. Full write-up coming soon.</p>
+    <p>MacTitan is a macro research assistant for traders of Bitget rTokens: spot-traded tokens that track US-listed equities and ETFs, quoted in USDT (rAAPL, rNVDA, rSPY, and similar). Ask a question in plain language and the answer is built from real, computed numbers: maintained official event calendars, daily price history from Bitget's spot market, category-level CPI data from the Bureau of Labor Statistics, and live feeds from the Federal Reserve and the White House.</p>
+    <p>Seven research tools cover the full scope: how a ticker reacts to a macro event (average move, realized volatility, and direction), which sectors move hardest around a release across the 116-token universe, whether a ticker's volatility is elevated right now, when an indicator is released next, what is driving the latest CPI print, what Fed officials have said recently, and what is on today's White House schedule.</p>
+    <p>The language model maps your question onto those tools; it never supplies a number itself. Python executes the tool against real data, the tool returns computed figures, and the model explains them. When a tool errors, comes back empty, or has too little history, the answer says so instead of filling the gap.</p>
   </div>
   <div class="hero-ctas">
     <a href="chat.html" class="btn btn-primary">‣ Open Web Chat</a>
     <a href="https://t.me/mactitan_bot" class="btn btn-secondary" target="_blank" rel="noopener">‣ Message on Telegram</a>
+  </div>
+</section>
+
+<section class="about">
+  <h2 class="section-title">Data sources</h2>
+  <div class="about-text">
+    <p>Every dated fact in an answer traces to one of six sources, each tested against live behavior before it shipped.</p>
+    <p><strong>Bitget daily price history.</strong> Daily candles for every listed rToken come from Bitget's public spot market API, shared infrastructure for all users. Optional read-only keys add private portfolio holdings, which power the beta, correlation, and diversification tools.</p>
+    <p><strong>The maintained event calendar.</strong> 19 US macro event types. Fifteen carry the issuing agency's official 2026 schedule: FOMC from the Federal Reserve, CPI, PPI, nonfarm payrolls, unemployment, and JOLTS from BLS, PCE and GDP from BEA, retail sales, durable goods orders, housing starts, and the trade balance from Census, industrial production from the Fed G.17, and University of Michigan sentiment from the survey's own schedule. Four follow confirmed fixed rules: ISM Manufacturing on the first business day of the month, ISM Services on the third, initial jobless claims every Thursday, and Conference Board consumer confidence on the last Tuesday. Confirmed agency schedules always win, and known holiday conflicts are recorded as explicit overrides.</p>
+    <p><strong>FRED.</strong> The St. Louis Fed's public API supplies the series values behind inflation questions, primarily headline CPI. Release dates come from the maintained calendar, because FRED's revision timestamps proved unreliable as publication dates in live testing.</p>
+    <p><strong>BLS public API.</strong> Seasonally adjusted CPI components, headline, core, food, energy, and shelter, plus total nonfarm employment, joined to calendar dates by reference period. That breakdown is what answers "what is driving the latest CPI print".</p>
+    <p><strong>Fed speeches RSS.</strong> The Federal Reserve's published speeches feed, live: a rolling window of the most recent speeches, matched to officials by name and dated in ISO format.</p>
+    <p><strong>White House schedule.</strong> The Factba.se / Roll Call day-of schedule, published as a public ICS calendar. The server caches it and refreshes it every 10 minutes, and refuses to show it if it goes stale. Entries are published day-of, and the assistant says so rather than implying future schedules exist.</p>
+  </div>
+</section>
+
+<section class="features">
+  <h2 class="section-title">How the numbers are computed</h2>
+  <div class="feature-grid">
+    <div class="feature-card">
+      <span class="feature-tag">EVENT REACTIONS</span>
+      <h3>How a ticker actually reacted</h3>
+      <p>Each event contributes one measured reaction: the last close before the event against the first close after it, the percent move between them, realized volatility across the window, and a direction read when at least 70 percent of events agree.</p>
+    </div>
+    <div class="feature-card">
+      <span class="feature-tag">SECTOR SENSITIVITY</span>
+      <h3>Which sectors move hardest</h3>
+      <p>The full mapped universe of 116 rTokens across 13 sector groups is scanned per event type, and sectors are ranked by average absolute move, with the number of tokens behind each figure reported.</p>
+    </div>
+    <div class="feature-card">
+      <span class="feature-tag">VOLATILITY REGIME</span>
+      <h3>Is volatility elevated right now</h3>
+      <p>The last 10 days of realized volatility are compared against the ticker's own longer baseline. Elevated means at least 1.5x, and thin history returns nothing rather than a number computed from too small a sample.</p>
+    </div>
+    <div class="feature-card">
+      <span class="feature-tag">PORTFOLIO STRUCTURE</span>
+      <h3>Beta, correlations, diversifiers</h3>
+      <p>Beta against rSPY, pairwise correlations, and sector weights for a holdings set, plus a ranked list of tickers you don't hold by their average correlation to what you do hold.</p>
+    </div>
+  </div>
+</section>
+
+<section class="about">
+  <h2 class="section-title">Answer integrity</h2>
+  <div class="about-text">
+    <p>Every number in an answer comes from a tool execution. Unknown tickers, unknown event types, empty results, and tool errors are stated as such, and the two live feeds state their own scope: published speeches, day-of schedules.</p>
+    <p>Measurements are sized to real traded history, about 100 daily candles per ticker, and every summary reports exactly how many events contributed to its figures. Moves are measured against the event date itself, on data that is entirely free and public, so every figure is reproducible from the same agency sources. No consensus forecasts are used, so answers speak in realized moves rather than in beat or miss.</p>
   </div>
 </section>
 
@@ -51,6 +98,9 @@
       <a href="https://www.bitget.com/asia/academy/bitget-rtoken-faq" class="footer-link" target="_blank" rel="noopener">Bitget rToken market data</a>
       <a href="https://fred.stlouisfed.org/docs/api/fred/" class="footer-link" target="_blank" rel="noopener">FRED macro data series</a>
       <a href="https://www.bls.gov/developers/home.htm" class="footer-link" target="_blank" rel="noopener">BLS macro data series</a>
+      <a href="https://www.federalreserve.gov/feeds/speeches.xml" class="footer-link" target="_blank" rel="noopener">Fed speeches RSS feed</a>
+      <a href="https://calendar.google.com/calendar/ical/cantymedia.com_62fqfmv1eejqs9hntbr6hof5kc%40group.calendar.google.com/public/basic.ics" class="footer-link" target="_blank" rel="noopener">White House schedule ICS feed</a>
+      <a href="https://www.bls.gov/schedule/news_release/current_year.asp" class="footer-link" target="_blank" rel="noopener">Official release calendars</a>
     </div>
   </div>
   <div class="footer-status">‣ Live on Bitget. Base Camp Hackathon S2 ‣</div>
