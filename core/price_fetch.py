@@ -1,6 +1,6 @@
 """
 Fetches public rToken price history from Bitget's spot market API.
-No API key required — this is public market data, shared across all users.
+This is public market data, shared across all users.
 """
 
 import requests
