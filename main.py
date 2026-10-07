@@ -1,11 +1,15 @@
 """
 MacTitan backend API. /chat for the web frontend, /telegram/webhook for the
-Telegram bot — both wrap the same core.assistant.ask().
+Telegram bot, both wrapping the same core.assistant.ask().
 
 The web endpoint is stateless (frontend sends history back each request).
-The Telegram endpoint holds per-chat history in memory, since Telegram has
-no equivalent of a frontend managing that state — see TELEGRAM_HISTORY
-below for the tradeoff this implies.
+The Telegram endpoint holds per-chat history in a SQLite file, since
+Telegram has no equivalent of a frontend managing that state, and the file
+survives restarts.
+
+On startup, this also kicks off the POTUS schedule background refresh (see
+core/potus_schedule.py), so the first user doesn't have to wait for the
+initial 1-2 minute download.
 
 Run with: uvicorn main:app --host 0.0.0.0 --port 8000
 """
@@ -20,11 +24,10 @@ from pydantic import BaseModel
 from core.assistant import ask
 from core.telegram_format import to_telegram_text
 from core.chat_storage import get_history, save_history
+from core.potus_schedule import ensure_background_refresh
 
 app = FastAPI(title="MacTitan API")
 
-# CORS: allow the production frontend domain plus localhost for local dev.
-# Update ALLOWED_ORIGINS once the Vercel frontend domain is finalized.
 ALLOWED_ORIGINS = [
     "https://mactitan.useomniagents.xyz",
     "http://localhost:3000",
@@ -38,6 +41,16 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.on_event("startup")
+def start_background_jobs():
+    # Starts the POTUS schedule's background refresh thread immediately,
+    # rather than waiting for the first user to trigger it. The first
+    # refresh still takes 1-2 minutes (the source file is large and slow
+    # to download, confirmed directly), but it happens during server
+    # startup instead of during someone's first chat message.
+    ensure_background_refresh()
 
 
 class ChatRequest(BaseModel):
@@ -54,8 +67,6 @@ class ChatResponse(BaseModel):
 
 @app.get("/health")
 def health():
-    """Basic liveness check — useful for judges/monitoring to confirm the
-    service is up without triggering an LLM call."""
     return {"status": "ok"}
 
 
@@ -77,9 +88,9 @@ def chat(request: ChatRequest):
     )
 
 
-# ---------------------------------------------------------------------------
+# ---------------------------------------------------------------------
 # Telegram bot
-# ---------------------------------------------------------------------------
+# ---------------------------------------------------------------------
 # Per-chat history is persisted to a local SQLite file (core/chat_storage.py)
 # so it survives restarts and redeploys.
 
@@ -98,8 +109,6 @@ def _send_telegram_message(chat_id: int, text: str) -> None:
         timeout=10,
     )
     if not resp.ok:
-        # If Markdown parsing fails (e.g. unescaped special characters),
-        # retry once as plain text rather than losing the reply entirely.
         requests.post(
             _telegram_api_url("sendMessage"),
             json={"chat_id": chat_id, "text": text},
@@ -113,7 +122,7 @@ async def telegram_webhook(request: Request):
 
     message = update.get("message")
     if not message or "text" not in message:
-        return {"ok": True}  # ignore non-text updates (photos, stickers, etc.)
+        return {"ok": True}
 
     chat_id = message["chat"]["id"]
     user_text = message["text"]

@@ -2,10 +2,15 @@
 LLM-facing tools: simple wrapper functions around the already-tested core
 engine, plus their OpenAI-compatible function-calling schemas.
 
-Covers 20 macro indicators (see data/macro_calendar.py for exact coverage
-status per indicator — all either COMPLETE for the full 2026 year with real
-official dates, or COMPUTED from a confirmed fixed institutional rule).
-Nothing here is guessed or estimated.
+Covers 19 macro indicators (see data/macro_calendar.py for exact coverage
+status per indicator, all either COMPLETE for the full 2026 year with real
+official dates or COMPUTED from a confirmed fixed institutional rule),
+plus two live feeds that work differently from everything else:
+get_recent_fed_speeches and get_potus_schedule. Both show what is
+currently published, not a forward calendar, because that data genuinely
+is not published months in advance the way CPI or FOMC dates are. See
+core/fed_speeches.py and core/potus_schedule.py for the sourcing and the
+reasons each is built the way it is.
 """
 
 from datetime import date
@@ -16,7 +21,7 @@ from core.sector_sensitivity import rank_sector_sensitivity
 from core.stats import compute_recent_volatility
 from core.bls_data import get_cpi_breakdown
 from core.fed_speeches import get_recent_fed_speeches
-from core.potus_schedule import fetch_potus_schedule
+from core.potus_schedule import fetch_potus_schedule, PotusScheduleUnavailable
 from data.macro_calendar import (
     CPI_2026_DATES_CONFIRMED,
     FOMC_2026_DATES,
@@ -166,7 +171,7 @@ def tool_cpi_breakdown() -> dict:
 
 
 def tool_recent_fed_speeches(speaker: str | None = None) -> dict:
-    """Recent Fed speeches, live from the Fed's own feed — optionally filtered to one official."""
+    """Recent Fed speeches, live from the Fed's own feed, optionally filtered to one official."""
     try:
         speeches = get_recent_fed_speeches(speaker_filter=speaker, limit=10)
     except Exception as e:
@@ -174,19 +179,25 @@ def tool_recent_fed_speeches(speaker: str | None = None) -> dict:
     return {
         "speaker_filter": speaker,
         "speeches": speeches,
-        "note": "This is a live, rolling feed of the ~20 most recent Fed speeches, not a forward calendar — it shows what's recent or already announced, not what's scheduled months out.",
+        "note": "A live, rolling feed of the roughly 20 most recent Fed speeches, not a forward calendar. It shows what's recent or already announced, not what's scheduled months out.",
     }
 
 
 def tool_potus_schedule() -> dict:
-    """Live check of the current White House daily schedule, via a third-party feed (see core/potus_schedule.py)."""
+    """
+    Live White House daily schedule, via a cached background refresh (see
+    core/potus_schedule.py). Reads only the cache, so this is always fast
+    even though the underlying source takes 1 to 2 minutes to download.
+    """
     try:
         schedule = fetch_potus_schedule()
+    except PotusScheduleUnavailable as e:
+        return {"error": str(e)}
     except Exception as e:
-        return {"error": f"Could not fetch POTUS schedule feed: {str(e)}"}
+        return {"error": f"Could not read the POTUS schedule cache: {str(e)}"}
     return {
         "schedule": schedule,
-        "note": "This shows what's currently published on the schedule feed right now — it cannot show a future date that hasn't been published yet, and it is not an official government source (see core/potus_schedule.py for the sourcing).",
+        "note": "Shows what's currently on the schedule feed, covering roughly 2 days back to 14 days ahead. This is not an official government source, and it cannot show a date the feed hasn't published yet.",
     }
 
 
@@ -271,7 +282,7 @@ TOOL_SCHEMAS = [
         "type": "function",
         "function": {
             "name": "get_recent_fed_speeches",
-            "description": "Get recent Fed official speeches, live from the Fed's own feed. Not a forward calendar — shows what's recent or already announced, since Fed speeches aren't published as a full-year schedule the way CPI/FOMC dates are.",
+            "description": "Get recent Fed official speeches, live from the Fed's own feed. Not a forward calendar, since individual Fed speeches aren't published as a full-year schedule the way CPI or FOMC dates are.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -284,7 +295,7 @@ TOOL_SCHEMAS = [
         "type": "function",
         "function": {
             "name": "get_potus_schedule",
-            "description": "Live check of the current White House daily schedule, via a credible third-party tracker (not an official government feed). Only shows what's published right now — cannot answer about future or past dates.",
+            "description": "Live check of the current White House daily schedule, via a credible third-party tracker, not an official government feed. Covers roughly 2 days back to 14 days ahead. Cannot answer about a date the feed hasn't published yet.",
             "parameters": {"type": "object", "properties": {}},
         },
     },

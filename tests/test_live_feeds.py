@@ -1,9 +1,9 @@
 """
-Tests the two live-fetch tools (Fed speeches, POTUS schedule) against real
-network access. These are the two tools in this codebase that hit a live
-feed at call time rather than a pre-built list, and neither has been
-verified against a real fetch yet — this sandbox can't reach either
-federalreserve.gov or calendar.google.com.
+Tests the two live feeds against real network access.
+
+The POTUS part downloads the full source file (about 11 MB, roughly 1 to 2
+minutes because Google is slow to respond), so expect this script to sit
+quietly for a while on that step.
 
 Usage:
     python3 tests/test_live_feeds.py
@@ -11,18 +11,19 @@ Usage:
 
 import os
 import sys
+import time
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from core.fed_speeches import fetch_fed_speeches, get_recent_fed_speeches
-from core.potus_schedule import fetch_potus_schedule
+from core.potus_schedule import refresh_potus_schedule
 
 SEPARATOR = "=" * 60
 
 
 def test_fed_speeches():
     print(SEPARATOR)
-    print("Fed speeches feed — real fetch")
+    print("Fed speeches feed, real fetch")
     print(SEPARATOR)
     speeches = fetch_fed_speeches()
     print(f"Got {len(speeches)} entries. First 3:")
@@ -36,27 +37,23 @@ def test_fed_speeches():
         print(f"  {s}")
     print()
 
-    # Check that the speaker extraction actually found SOMEONE, not just
-    # None for every entry — if every speaker is None, the name-matching
-    # heuristic in fed_speeches.py needs fixing against the real title format.
     matched = sum(1 for s in speeches if s["speaker"])
-    print(f"Speaker successfully identified in {matched}/{len(speeches)} entries")
-    if matched == 0 and speeches:
-        print("  [WARNING] Zero speakers matched — check the real title format against KNOWN_FED_OFFICIALS")
+    print(f"Speaker identified in {matched}/{len(speeches)} entries")
     print()
 
 
 def test_potus_schedule():
     print(SEPARATOR)
-    print("POTUS schedule feed — real fetch")
+    print("POTUS schedule feed, real download (1 to 2 minutes)")
     print(SEPARATOR)
-    schedule = fetch_potus_schedule()
-    print(f"Got {len(schedule)} entries. First 5:")
-    for item in schedule[:5]:
+    started = time.monotonic()
+    events = refresh_potus_schedule()
+    print(f"Downloaded and parsed in {time.monotonic() - started:.0f}s")
+    print(f"{len(events)} events in the window (2 days back to 14 days ahead). First 8:")
+    for item in events[:8]:
         print(f"  {item}")
     print()
-    print("Check: do the time_et values look like real, sensible clock times?")
-    print("Check: does datetime_utc look correctly ordered (chronological)?")
+    print("Check: are the times sensible, and is today's schedule in there?")
 
 
 if __name__ == "__main__":
@@ -71,4 +68,4 @@ if __name__ == "__main__":
         print(f"[FAILED] POTUS schedule: {e}\n")
 
     print(SEPARATOR)
-    print("Done. These two feeds were never verified against real network access before this.")
+    print("Done.")

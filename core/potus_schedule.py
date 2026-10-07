@@ -1,33 +1,50 @@
 """
-Live POTUS schedule check — same category of tool as core/fed_speeches.py:
-a live fetch at query time, not a pre-built calendar, because this data
-genuinely isn't published far enough in advance to hardcode.
+Live POTUS schedule check. Same category as core/fed_speeches.py: it shows
+what is published right now, not a forward calendar, because the schedule
+is only published day-of.
 
-SOURCE, AND WHY IT'S HONEST TO USE: the White House's own current site does
-not publish a structured advance schedule (that practice existed on the
-Obama-era site, archived, not the live one). Factba.se/Roll Call — a
-credible, established political-journalism tracker (founded 2017, acquired
-by FiscalNote, used by working political journalists, not an anonymous
-scraper) — republishes the White House's day-of schedule as a public Google
-Calendar in standard ICS format. This is a third-party source, not the
-government directly, but a credible and technically clean one: no auth, no
-rate limiting, structured data, independently confirmed working by a real
-project (github.com/PatrickJamesYoung/MIP-Calendar, live-tested against 22
-real events for a specific date).
+SOURCE: Factba.se / Roll Call (an established political-journalism tracker)
+republishes the White House day-of schedule as a public Google Calendar in
+ICS format. This is a third-party source, not the government directly.
 
-REAL LIMITATION, not a bug: this can only ever answer "what's on the
-schedule right now" — because that's literally the only thing that exists.
-It cannot tell you what POTUS is doing three weeks from now (that schedule
-doesn't exist yet anywhere), and it's not a reliable historical archive
-either (it's a rolling calendar, not built for looking backward). This is
-fundamentally different from next_cpi_date() and friends, which answer the
-same way regardless of when you ask.
+MEASURED BEHAVIOR OF THE SOURCE (from a real test, not assumed):
+the ICS file is about 10.9 MB, Google takes about 34 seconds to send the
+first byte, and the full download takes about 90 seconds. It is not
+blocked. Any client with a short timeout fails, a browser just waits.
+
+DESIGN, because of that:
+- A background thread downloads the file every 10 minutes and stores the
+  small slice that matters (a window around today) in potus_cache.json.
+- The chat tool only reads that cache, so it answers instantly and never
+  waits 90 seconds inside a request.
+- The file is streamed to disk and parsed line by line, so memory stays low
+  (a t3.nano has 512 MB; loading 10 MB into a calendar library would not be safe).
+- Cached data older than 3 hours is refused instead of shown, because a
+  stale day-of schedule is worse than none.
+
+KNOWN GAPS (not verified against the real file):
+- Recurring events (RRULE) are counted and logged but not expanded.
+- Events with no time zone are assumed to be UTC.
+- All-day entries are skipped.
 """
 
+import json
+import logging
+import os
+import tempfile
+import threading
+import time
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 
 import requests
-from icalendar import Calendar
+
+try:
+    from zoneinfo import ZoneInfo
+except ImportError:  # very old Python
+    ZoneInfo = None
+
+log = logging.getLogger("mactitan.potus")
 
 FACTBASE_ICS_URL = (
     "https://calendar.google.com/calendar/ical/"
@@ -35,81 +52,316 @@ FACTBASE_ICS_URL = (
     "public/basic.ics"
 )
 
-# Known pool-status phrases the source uses — extracted only on an exact
-# match so free-form description text isn't misread as one of these.
+CACHE_PATH = Path(__file__).parent.parent / "potus_cache.json"
+
+REFRESH_INTERVAL_SECONDS = 600
+RETRY_INTERVAL_SECONDS = 120
+MAX_CACHE_AGE_SECONDS = 3 * 3600
+WINDOW_DAYS_BACK = 2
+WINDOW_DAYS_FORWARD = 14
+CONNECT_TIMEOUT = 15
+READ_TIMEOUT = 120          # max wait between chunks; first byte took ~34s in testing
+TOTAL_DEADLINE_SECONDS = 300
+
 _POOL_PHRASES = (
     "Out-of-Town Travel Pool", "In-Town Pool", "Open Press", "Closed Press",
     "Pre-Credentialed Media", "Restricted Press", "Travel Pool",
 )
 
 
-def fetch_potus_schedule(timeout: int = 10) -> list[dict]:
+class PotusScheduleUnavailable(Exception):
+    """Raised when there is no usable schedule data to show right now."""
+
+
+# ---------------------------------------------------------------------
+# Parsing (streaming, low memory)
+# ---------------------------------------------------------------------
+
+def _unfolded_lines(path):
+    """Yield ICS lines with folded continuation lines joined back together."""
+    pending = None
+    with open(path, "rb") as f:
+        for raw in f:
+            line = raw.rstrip(b"\r\n").decode("utf-8", errors="replace")
+            if line[:1] in (" ", "\t") and pending is not None:
+                pending += line[1:]
+                continue
+            if pending is not None:
+                yield pending
+            pending = line
+    if pending is not None:
+        yield pending
+
+
+def _unescape(value):
+    out = []
+    i = 0
+    while i < len(value):
+        c = value[i]
+        if c == "\\" and i + 1 < len(value):
+            n = value[i + 1]
+            out.append("\n" if n in "nN" else n)
+            i += 2
+        else:
+            out.append(c)
+            i += 1
+    return "".join(out)
+
+
+def _split_property(line):
+    head, sep, value = line.partition(":")
+    if not sep:
+        return None
+    parts = head.split(";")
+    params = {}
+    for p in parts[1:]:
+        k, _, v = p.partition("=")
+        params[k.upper()] = v.strip('"')
+    return parts[0].upper(), params, value
+
+
+def _parse_dtstart(params, value):
+    if params.get("VALUE", "").upper() == "DATE" or len(value) == 8:
+        return None  # all-day entry, no time
+    try:
+        if value.endswith("Z"):
+            return datetime.strptime(value, "%Y%m%dT%H%M%SZ").replace(tzinfo=timezone.utc)
+        naive = datetime.strptime(value, "%Y%m%dT%H%M%S")
+    except ValueError:
+        return None
+    tzid = params.get("TZID")
+    if tzid and ZoneInfo:
+        try:
+            return naive.replace(tzinfo=ZoneInfo(tzid)).astimezone(timezone.utc)
+        except Exception:
+            pass
+    return naive.replace(tzinfo=timezone.utc)
+
+
+def _eastern(dt_utc):
+    if ZoneInfo:
+        try:
+            return dt_utc.astimezone(ZoneInfo("America/New_York"))
+        except Exception:
+            pass
+    return dt_utc + timedelta(hours=-4 if 3 <= dt_utc.month <= 11 else -5)
+
+
+def _format_et(dt_utc):
+    return _eastern(dt_utc).strftime("%-I:%M %p ET")
+
+
+def _finish_event(current, start_utc, end_utc):
+    dt = current.get("dtstart")
+    summary = current.get("summary")
+    if dt is None or not summary:
+        return None
+    if not (start_utc <= dt < end_utc):
+        return None
+    desc = (current.get("description") or "").strip()
+    first = desc.splitlines()[0].strip() if desc else ""
+    return {
+        "time_et": _format_et(dt),
+        "description": summary,
+        "pool_status": first if first in _POOL_PHRASES else None,
+        "datetime_utc": dt.isoformat(),
+    }
+
+
+def parse_ics_window(path, start_utc, end_utc):
     """
-    Fetch and parse the live Factba.se/Roll Call White House schedule feed.
-
-    Returns a list of dicts in chronological order:
-        {"time_et": str, "description": str, "pool_status": str | None,
-         "datetime_utc": str (ISO)}
-
-    Raises requests.HTTPError on a failed fetch.
+    Stream through an ICS file and keep only events starting inside
+    [start_utc, end_utc). Returns (events sorted by time, stats dict).
     """
-    resp = requests.get(FACTBASE_ICS_URL, timeout=timeout, headers={"Cache-Control": "no-cache"})
-    resp.raise_for_status()
+    events = []
+    stats = {"total": 0, "recurring_not_expanded": 0}
+    in_event = False
+    nested_depth = 0
+    current = None
 
-    cal = Calendar.from_ical(resp.content)
-    items = []
-
-    for component in cal.walk("VEVENT"):
-        dtstart = component.get("DTSTART")
-        if dtstart is None:
+    for line in _unfolded_lines(path):
+        if line == "BEGIN:VEVENT":
+            in_event, nested_depth, current = True, 0, {}
+            stats["total"] += 1
             continue
-        dt = dtstart.dt
-        if not isinstance(dt, datetime):
-            continue  # skip all-day/date-only entries, not a scheduled item with a real time
-        dt_utc = dt.astimezone(timezone.utc) if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
-
-        summary = str(component.get("SUMMARY") or "").strip()
-        if not summary:
+        if not in_event:
+            continue
+        if line == "END:VEVENT":
+            in_event = False
+            if current.get("rrule"):
+                stats["recurring_not_expanded"] += 1
+            ev = _finish_event(current, start_utc, end_utc)
+            if ev:
+                events.append(ev)
+            current = None
+            continue
+        if line.startswith("BEGIN:"):      # e.g. VALARM inside an event
+            nested_depth += 1
+            continue
+        if line.startswith("END:"):
+            nested_depth = max(0, nested_depth - 1)
+            continue
+        if nested_depth:
             continue
 
-        description_field = component.get("DESCRIPTION")
-        pool_status = None
-        if description_field:
-            first_line = str(description_field).splitlines()[0].strip()
-            if first_line in _POOL_PHRASES:
-                pool_status = first_line
+        prop = _split_property(line)
+        if not prop:
+            continue
+        name, params, value = prop
+        if name == "DTSTART" and "dtstart" not in current:
+            current["dtstart"] = _parse_dtstart(params, value)
+        elif name == "SUMMARY":
+            current["summary"] = _unescape(value).strip()
+        elif name == "DESCRIPTION":
+            current["description"] = _unescape(value)
+        elif name == "RRULE":
+            current["rrule"] = True
 
-        # Display as ET. Uses a simple March-November DST approximation
-        # (not exact to the minute DST switches over, but correct for all
-        # but a few hours each year) rather than the hardcoded EST-only
-        # offset this had at first, which would have mislabeled every
-        # summer entry by an hour.
-        is_likely_edt = 3 <= dt_utc.month <= 11
-        et_offset = timedelta(hours=-4 if is_likely_edt else -5)
-        et_dt = dt_utc + et_offset
-
-        items.append({
-            "time_et": et_dt.strftime("%-I:%M %p ET"),
-            "description": summary,
-            "pool_status": pool_status,
-            "datetime_utc": dt_utc.isoformat(),
-        })
-
-    items.sort(key=lambda it: it["datetime_utc"])
-    return items
+    events.sort(key=lambda e: e["datetime_utc"])
+    return events, stats
 
 
-def get_todays_potus_schedule() -> list[dict]:
+# ---------------------------------------------------------------------
+# Download + cache
+# ---------------------------------------------------------------------
+
+def _download_ics(dest_path):
+    started = time.monotonic()
+    with requests.get(
+        FACTBASE_ICS_URL, stream=True, timeout=(CONNECT_TIMEOUT, READ_TIMEOUT)
+    ) as resp:
+        resp.raise_for_status()
+        with open(dest_path, "wb") as out:
+            for chunk in resp.iter_content(chunk_size=64 * 1024):
+                if chunk:
+                    out.write(chunk)
+                if time.monotonic() - started > TOTAL_DEADLINE_SECONDS:
+                    raise PotusScheduleUnavailable("Download exceeded the total time limit.")
+
+
+def _write_cache(events, fetched_at, stats):
+    payload = {
+        "fetched_at_utc": fetched_at.isoformat(),
+        "fetched_at_epoch": fetched_at.timestamp(),
+        "stats": stats,
+        "items": events,
+    }
+    tmp = str(CACHE_PATH) + ".tmp"
+    with open(tmp, "w") as f:
+        json.dump(payload, f)
+    os.replace(tmp, CACHE_PATH)
+
+
+def _read_cache():
+    try:
+        with open(CACHE_PATH) as f:
+            return json.load(f)
+    except (FileNotFoundError, ValueError):
+        return None
+
+
+_refresh_lock = threading.Lock()
+
+
+def refresh_potus_schedule():
     """
-    Convenience wrapper: only today's entries (UTC calendar day — a rough
-    approximation of "today," since the source's own day boundary handling
-    isn't independently confirmed here). For anything requiring precise
-    ET day-boundary handling, use fetch_potus_schedule() directly and
-    filter against a properly computed ET window.
+    Blocking: download the full feed (about 90 seconds), parse the window
+    around today, write the cache. Used by the background thread and by
+    `python3 -m core.potus_schedule`.
     """
-    all_items = fetch_potus_schedule()
-    today_utc = datetime.now(timezone.utc).date()
+    if not _refresh_lock.acquire(blocking=False):
+        raise PotusScheduleUnavailable("A refresh is already in progress.")
+    tmp_path = None
+    try:
+        now = datetime.now(timezone.utc)
+        fd, tmp_path = tempfile.mkstemp(suffix=".ics")
+        os.close(fd)
+        _download_ics(tmp_path)
+        events, stats = parse_ics_window(
+            tmp_path,
+            now - timedelta(days=WINDOW_DAYS_BACK),
+            now + timedelta(days=WINDOW_DAYS_FORWARD),
+        )
+        _write_cache(events, now, stats)
+        log.info("POTUS schedule refreshed: %d events in window (%s)", len(events), stats)
+        return events
+    finally:
+        if tmp_path and os.path.exists(tmp_path):
+            os.remove(tmp_path)
+        _refresh_lock.release()
+
+
+_bg_started = False
+_bg_guard = threading.Lock()
+
+
+def _refresh_loop():
+    cache = _read_cache()
+    if cache:
+        age = time.time() - cache.get("fetched_at_epoch", 0)
+        time.sleep(max(0, REFRESH_INTERVAL_SECONDS - age))
+    while True:
+        try:
+            refresh_potus_schedule()
+            delay = REFRESH_INTERVAL_SECONDS
+        except Exception as e:
+            log.warning("POTUS schedule refresh failed: %s", e)
+            delay = RETRY_INTERVAL_SECONDS
+        time.sleep(delay)
+
+
+def ensure_background_refresh():
+    """Start the refresh thread once per process. Safe to call repeatedly."""
+    global _bg_started
+    with _bg_guard:
+        if _bg_started:
+            return
+        _bg_started = True
+    threading.Thread(target=_refresh_loop, name="potus-refresh", daemon=True).start()
+
+
+# ---------------------------------------------------------------------
+# What the chat tool calls: instant, reads the cache only
+# ---------------------------------------------------------------------
+
+def fetch_potus_schedule():
+    """
+    Return the cached schedule window (list of dicts, chronological), each
+    stamped with as_of_utc (when the data was downloaded). Never waits on
+    the network. Raises PotusScheduleUnavailable if there is nothing usable.
+    """
+    ensure_background_refresh()
+    cache = _read_cache()
+    if cache is None:
+        raise PotusScheduleUnavailable(
+            "The schedule feed is loading for the first time. The source file is large "
+            "and takes 1 to 2 minutes to download. Ask again in a couple of minutes."
+        )
+    age = time.time() - cache.get("fetched_at_epoch", 0)
+    if age > MAX_CACHE_AGE_SECONDS:
+        raise PotusScheduleUnavailable(
+            f"The schedule data was last refreshed about {int(age // 3600)} hours ago and "
+            "recent refreshes have failed, so it is not being shown."
+        )
+    as_of = cache["fetched_at_utc"]
+    return [dict(item, as_of_utc=as_of) for item in cache["items"]]
+
+
+def get_todays_potus_schedule():
+    """Only entries that fall on today's date in Eastern Time."""
+    today_et = _eastern(datetime.now(timezone.utc)).date()
     return [
-        it for it in all_items
-        if datetime.fromisoformat(it["datetime_utc"]).date() == today_utc
+        it for it in fetch_potus_schedule()
+        if _eastern(datetime.fromisoformat(it["datetime_utc"])).date() == today_et
     ]
+
+
+if __name__ == "__main__":
+    # Run from the project root: python3 -m core.potus_schedule
+    logging.basicConfig(level=logging.INFO)
+    t0 = time.monotonic()
+    result = refresh_potus_schedule()
+    print(f"Downloaded and parsed in {time.monotonic() - t0:.0f}s. "
+          f"{len(result)} events in the window. First 10:")
+    for e in result[:10]:
+        print(" ", e)
