@@ -215,6 +215,12 @@ function renderWorkspace(toolResults) {
         case "get_cpi_breakdown":
           section.appendChild(renderCpiBreakdown(tr.result));
           break;
+        case "get_recent_fed_speeches":
+          section.appendChild(renderFedSpeeches(tr.result));
+          break;
+        case "get_potus_schedule":
+          section.appendChild(renderPotusSchedule(tr.result));
+          break;
         default:
           section.appendChild(renderError(`Unknown tool result: ${tr.tool}`));
       }
@@ -403,6 +409,69 @@ function renderCpiBreakdown(result) {
       <table class="data-table">
         <thead><tr><th>Month</th><th>Headline</th><th>Energy</th><th>Shelter</th></tr></thead>
         <tbody>${historyRows}</tbody>
+      </table>
+    </div>
+  `;
+  return wrap;
+}
+
+// --- Fed speeches (rolling feed) ------------------------------------------
+
+function renderFedSpeeches(result) {
+  const wrap = document.createElement("div");
+  const speeches = result.speeches || [];
+  const speakerFold = result.speaker_filter ? ` (filtered to ${result.speaker_filter})` : "";
+
+  wrap.innerHTML = `
+    <div class="ws-title">Recent Fed speeches${speakerFold}</div>
+    <div class="ws-subtitle">Rolling feed of the ~20 most recently published speeches — not a forward calendar.</div>
+    <div class="data-table-wrap">
+      <table class="data-table">
+        <thead><tr><th>Date</th><th>Speaker</th><th>Title</th><th>Summary</th></tr></thead>
+        <tbody>
+          ${speeches.map((s) => `
+            <tr>
+              <td>${escapeHtml(s.date || "—")}</td>
+              <td>${escapeHtml(s.speaker || "—")}</td>
+              <td>${escapeHtml(s.title)}</td>
+              <td>${escapeHtml(s.summary || "—")}</td>
+            </tr>
+          `).join("") || `
+            <tr><td colspan="4">No speeches in the feed yet.</td></tr>
+          `}
+        </tbody>
+      </table>
+    </div>
+  `;
+  return wrap;
+}
+
+// --- White House schedule (day-of, third-party feed) ----------------------
+
+function renderPotusSchedule(result) {
+  const wrap = document.createElement("div");
+  const schedule = (result.schedule || []).filter((it) => it.datetime_utc);
+  const asOf = result.as_of_utc || result.note || "unknown";
+  const note = result.note ? `<div class="ws-subtitle-note">${escapeHtml(result.note.replace(/\.$/, ""))}</div>` : "";
+
+  wrap.innerHTML = `
+    <div class="ws-title">White House schedule</div>
+    <div class="ws-subtitle">Day-of schedule via third-party tracker, not the government feed. Coverage: ~2 days back to 14 days ahead.</div>
+    ${note}
+    <div class="data-table-wrap">
+      <table class="data-table">
+        <thead><tr><th>Time (ET)</th><th>Description</th><th>Pool</th></tr></thead>
+        <tbody>
+          ${schedule.map((it) => `
+            <tr>
+              <td>${escapeHtml(it.time_et || "—")}</td>
+              <td>${escapeHtml(it.description)}</td>
+              <td>${escapeHtml(it.pool_status || "—")}</td>
+            </tr>
+          `).join("") || `
+            <tr><td colspan="3">No schedule entries yet.</td></tr>
+          `}
+        </tbody>
       </table>
     </div>
   `;
