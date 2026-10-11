@@ -166,11 +166,18 @@ def tool_upcoming_events() -> dict:
     official calendar. Answers "what macro events are coming up?" in general
     without forcing the model to guess a single event type.
     """
+    from datetime import timedelta
+
     today = date.today().isoformat()
+    cutoff = (date.fromisoformat(today) + timedelta(days=7)).isoformat()
     upcoming = []
     for event_type, lookup in _UPCOMING_LOOKUP.items():
-        next_date = lookup(today)
-        upcoming.append({"event_type": event_type, "next_date": next_date})
+        try:
+            next_date = lookup(today)
+        except Exception:
+            continue
+        if next_date and next_date <= cutoff:
+            upcoming.append({"event_type": event_type, "next_date": next_date})
     return {"upcoming": upcoming}
 
 
@@ -275,7 +282,7 @@ TOOL_SCHEMAS = [
         "type": "function",
         "function": {
             "name": "get_upcoming_event",
-            "description": "Get the next scheduled date for a type of macro event, from the official calendar for that indicator.",
+            "description": "Get the next scheduled date for a type of macro event, from the official calendar for that indicator. Use this when you already know the specific event type and just want its next date.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -283,6 +290,14 @@ TOOL_SCHEMAS = [
                 },
                 "required": ["event_type"],
             },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_upcoming_events",
+            "description": "The next known macro event dates within the next 7 days, across all 19 indicators. Use this for questions like 'what macro events are coming up?' or 'any upcoming events I should be aware of?' when the user holds tickers or wants general news. Do NOT use this for historical reaction questions.",
+            "parameters": {"type": "object", "properties": {}},
         },
     },
     {

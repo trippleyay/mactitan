@@ -383,33 +383,31 @@ function renderUpcomingEvent(result) {
 function renderUpcomingEvents(result) {
   const wrap = document.createElement("div");
   const upcoming = result.upcoming || [];
-  const rows = upcoming
-    .map(
-      (it) => `
-      <tr>
-        <td>${escapeHtml(LABEL_FOR(it.event_type) || it.event_type.replace(/_/g, " ").replace(/\b./g, (c) => c.toUpperCase()))}</td>
-        <td>${escapeHtml(it.next_date || "Not yet known")}</td>
-      </tr>
-    `)
-    .join("");
-  const emptyRow = upcoming.length === 0
-    ? "<tr><td colspan=\"2\">No upcoming dates known yet.</td></tr>"
-    : "";
 
   wrap.innerHTML = `
-    <div class="ws-title">Upcoming macro events</div>
-    <div class="ws-subtitle">All 19 indicator calendars — official Fed / BLS + computed rules.</div>
-    <div class="data-table-wrap">
-      <table class="data-table">
-        <thead><tr><th>Event</th><th>Next date</th></tr></thead>
-        <tbody>
-          ${rows}${emptyRow}
-        </tbody>
-      </table>
+    <div class="ws-title">Next macro events</div>
+    <div class="ws-subtitle">Events within the next 7 days, by their potential to move your holdings.</div>
+    <div class="stat-card-large">
+      <div class="stat-value stat-neutral">${upcoming.length} upcoming within 7 days</div>
+      <div class="stat-label">Filtered from the full event calendar</div>
+    </div>
+    <div class="stat-row">
+      ${upcoming.map((it) => `
+        <div class="stat-card-small">
+          <div class="stat-value" style="text-transform:capitalize;">${escapeHtml(LABEL_FOR(it.event_type) || it.event_type.replace(/_/g, " ").replace(/\b./g, (c) => c.toUpperCase()))}</div>
+          <div class="stat-label">${escapeHtml(it.next_date || "Not yet known")}</div>
+        </div>
+      `).join("") || `
+        <div class="stat-card-small">
+          <div class="stat-value stat-negative">No upcoming events within 7 days</div>
+          <div class="stat-label">Check back soon — the calendar updates daily</div>
+        </div>
+      `}
     </div>
   `;
   return wrap;
 }
+
 
 // --- CPI breakdown --------------------------------------------------------
 
