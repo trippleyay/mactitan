@@ -160,6 +160,20 @@ def tool_upcoming_event(event_type: str) -> dict:
     return {"event_type": event_type, "next_date": next_date}
 
 
+def tool_upcoming_events() -> dict:
+    """
+    The next known date for every macro event type, from each indicator's
+    official calendar. Answers "what macro events are coming up?" in general
+    without forcing the model to guess a single event type.
+    """
+    today = date.today().isoformat()
+    upcoming = []
+    for event_type, lookup in _UPCOMING_LOOKUP.items():
+        next_date = lookup(today)
+        upcoming.append({"event_type": event_type, "next_date": next_date})
+    return {"upcoming": upcoming}
+
+
 def tool_cpi_breakdown() -> dict:
     """Latest CPI reading broken into categories (headline, core, food, energy, shelter)."""
     breakdown = get_cpi_breakdown(start_year="2026", end_year="2026")
@@ -206,6 +220,7 @@ TOOL_DISPATCH = {
     "get_sector_sensitivity": tool_sector_sensitivity,
     "get_current_volatility": tool_current_volatility,
     "get_upcoming_event": tool_upcoming_event,
+    "get_upcoming_events": tool_upcoming_events,
     "get_cpi_breakdown": tool_cpi_breakdown,
     "get_recent_fed_speeches": tool_recent_fed_speeches,
     "get_potus_schedule": tool_potus_schedule,
@@ -268,6 +283,14 @@ TOOL_SCHEMAS = [
                 },
                 "required": ["event_type"],
             },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_upcoming_events",
+            "description": "The next known date for every macro event type, so the model can answer general 'what's coming up?' questions without guessing a single event type.",
+            "parameters": {"type": "object", "properties": {}},
         },
     },
     {

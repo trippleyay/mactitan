@@ -212,6 +212,9 @@ function renderWorkspace(toolResults) {
         case "get_upcoming_event":
           section.appendChild(renderUpcomingEvent(tr.result));
           break;
+        case "get_upcoming_events":
+          section.appendChild(renderUpcomingEvents(tr.result));
+          break;
         case "get_cpi_breakdown":
           section.appendChild(renderCpiBreakdown(tr.result));
           break;
@@ -375,6 +378,39 @@ function renderUpcomingEvent(result) {
   return wrap;
 }
 
+// --- Upcoming events (general, all 19) -----------------------------------
+
+function renderUpcomingEvents(result) {
+  const wrap = document.createElement("div");
+  const upcoming = result.upcoming || [];
+  const rows = upcoming
+    .map(
+      (it) => `
+      <tr>
+        <td>${escapeHtml(LABEL_FOR(it.event_type) || it.event_type.replace(/_/g, " ").replace(/\b./g, (c) => c.toUpperCase()))}</td>
+        <td>${escapeHtml(it.next_date || "Not yet known")}</td>
+      </tr>
+    `)
+    .join("");
+  const emptyRow = upcoming.length === 0
+    ? "<tr><td colspan=\"2\">No upcoming dates known yet.</td></tr>"
+    : "";
+
+  wrap.innerHTML = `
+    <div class="ws-title">Upcoming macro events</div>
+    <div class="ws-subtitle">All 19 indicator calendars — official Fed / BLS + computed rules.</div>
+    <div class="data-table-wrap">
+      <table class="data-table">
+        <thead><tr><th>Event</th><th>Next date</th></tr></thead>
+        <tbody>
+          ${rows}${emptyRow}
+        </tbody>
+      </table>
+    </div>
+  `;
+  return wrap;
+}
+
 // --- CPI breakdown --------------------------------------------------------
 
 function renderCpiBreakdown(result) {
@@ -476,6 +512,33 @@ function renderPotusSchedule(result) {
     </div>
   `;
   return wrap;
+}
+
+
+// Map the 19 backend event_type keys to friendly display labels.
+function LABEL_FOR(event_type) {
+  const labels = {
+    cpi: "CPI",
+    fomc: "FOMC",
+    ppi: "PPI",
+    nonfarm_payrolls: "Nonfarm Payrolls",
+    unemployment: "Unemployment",
+    retail_sales: "Retail Sales",
+    industrial_production: "Industrial Production",
+    pce: "PCE",
+    gdp: "GDP",
+    housing_starts: "Housing Starts",
+    consumer_sentiment_preliminary: "Consumer Sentiment (Preliminary)",
+    consumer_sentiment_final: "Consumer Sentiment (Final)",
+    jolts: "JOLTS",
+    durable_goods: "Durable Goods",
+    trade_balance: "Trade Balance",
+    ism_manufacturing: "ISM Manufacturing",
+    ism_services: "ISM Services",
+    initial_jobless_claims: "Initial Jobless Claims",
+    consumer_confidence: "Consumer Confidence",
+  };
+  return labels[event_type];
 }
 
 // --- Chart.js shared styling ---------------------------------------------
